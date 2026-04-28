@@ -1,287 +1,228 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Fishing In The Deep</title>
+<script src="https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.min.js"></script>
 <style>
-    body,html{margin:0;padding:0;background:#0a1a2a;font-family:sans-serif;color:#fff;overflow:hidden;}
-    canvas{display:block;margin:0 auto;background:linear-gradient(#6ec6ff,#003b5c);}
-    #ui{position:absolute;top:0;left:0;width:100%;pointer-events:none;}
-    .topBar{display:flex;justify-content:space-between;padding:10px;font-size:18px;}
-    .centerMsg{position:absolute;top:40%;width:100%;text-align:center;font-size:20px;}
-    .bottom{position:absolute;bottom:20px;width:100%;text-align:center;}
-    button{pointer-events:auto;padding:10px 20px;border:none;border-radius:10px;background:#ffd54f;font-size:18px;}
-    .upgrade{margin:5px;}
+body { margin:0; background:#0a1a2a; }
+canvas { display:block; margin:0 auto; }
 </style>
 </head>
 <body>
-<canvas id="game"></canvas>
-
-<div id="ui">
-    <div class="topBar">
-        <div id="coins">🪙 100</div>
-        <div id="fish" style="display:none;">🐟 0</div>
-    </div>
-    <div class="centerMsg" id="msg"></div>
-    <div class="bottom">
-        <div id="upgrades">
-            <button class="upgrade" onclick="upgradeFish()">Max Fish</button>
-            <button class="upgrade" onclick="upgradeDepth()">Max Depth</button>
-        </div>
-        <button id="playBtn" onclick="pressPlay()">Play</button>
-    </div>
-</div>
 
 <script>
-const canvas=document.getElementById("game");
-const ctx=canvas.getContext("2d");
-let w,h;
-
-function resize(){
-    w=canvas.width=window.innerWidth;
-    h=canvas.height=window.innerHeight;
+class BootScene extends Phaser.Scene {
+    constructor(){ super('Boot'); }
+    create(){ this.scene.start('Preload'); }
 }
-window.onresize=resize; resize();
 
-/////////////////////////
-// STATE
-/////////////////////////
-let state="menu";
-let coins=100;
-let fishCount=0;
-let round=1;
-
-let maxFish=6;
-let maxDepth=5;
-
-let fishUpgrades=[{v:7,c:50},{v:8,c:100},{v:9,c:200},{v:10,c:400}];
-let depthUpgrades=[{v:10,c:50},{v:15,c:75},{v:20,c:150},{v:30,c:300}];
-
-/////////////////////////
-// GAUGE
-/////////////////////////
-let gaugeT=0;
-let gaugeDir=1;
-let gaugeActive=true;
-let selectedDepth=0;
-
-/////////////////////////
-// HOOK
-/////////////////////////
-let hook={x:0,y:0,targetY:0,phase:"idle",speed:2};
-
-/////////////////////////
-// FISH
-/////////////////////////
-let fishes=[];
-function spawnFish(){
-    fishes=[];
-    for(let i=0;i<20;i++){
-        fishes.push({
-            x:Math.random()*w,
-            y:Math.random()*h*2,
-            caught:false,
-            value:10+Math.floor(Math.random()*20)
-        });
+class PreloadScene extends Phaser.Scene {
+    constructor(){ super('Preload'); }
+    preload(){
+        this.load.audio('bg', 'assets/background_music.mp3');
     }
+    create(){ this.scene.start('Game'); }
 }
 
-/////////////////////////
-// UI
-/////////////////////////
-function updateUI(){
-    document.getElementById("coins").innerText="🪙 "+coins;
-    document.getElementById("fish").innerText="🐟 "+fishCount;
-}
+class GameScene extends Phaser.Scene {
+    constructor(){ super('Game'); }
 
-/////////////////////////
-// UPGRADES
-/////////////////////////
-function upgradeFish(){
-    if(fishUpgrades.length===0) return;
-    let u=fishUpgrades[0];
-    if(coins>=u.c){
-        coins-=u.c;
-        maxFish=u.v;
-        fishUpgrades.shift();
-        updateUI();
-    }
-}
-function upgradeDepth(){
-    if(depthUpgrades.length===0) return;
-    let u=depthUpgrades[0];
-    if(coins>=u.c){
-        coins-=u.c;
-        maxDepth=u.v;
-        depthUpgrades.shift();
-        updateUI();
-    }
-}
+    init(){
+        this.coins = 100;
+        this.round = 1;
+        this.maxRounds = 3;
 
-/////////////////////////
-// PLAY
-/////////////////////////
-function pressPlay(){
-    if(state!=="menu") return;
+        this.maxFish = 6;
+        this.maxDepth = 5;
 
-    state="gauge";
-    document.getElementById("upgrades").style.display="none";
-}
-
-/////////////////////////
-// INPUT
-/////////////////////////
-canvas.addEventListener("pointerdown",()=>{
-    if(state==="gauge"){
-        gaugeActive=false;
-        let min=maxDepth-2;
-        selectedDepth=min + (maxDepth-min)*gaugeT;
-
-        startFishing();
-    }
-});
-
-/////////////////////////
-// START FISHING
-/////////////////////////
-function startFishing(){
-    state="down";
-    fishCount=0;
-
-    document.getElementById("coins").style.display="none";
-    document.getElementById("fish").style.display="block";
-
-    hook.y=0;
-    hook.targetY=selectedDepth*50;
-    hook.phase="down";
-
-    spawnFish();
-}
-
-/////////////////////////
-// LOOP
-/////////////////////////
-function update(){
-    if(state==="gauge"){
-        if(gaugeActive){
-            gaugeT+=0.01*gaugeDir;
-            if(gaugeT>1){gaugeT=1;gaugeDir=-1;}
-            if(gaugeT<0){gaugeT=0;gaugeDir=1;}
-        }
+        this.isFishing = false;
     }
 
-    if(state==="down"){
-        hook.y+=3;
-        if(hook.y>=hook.targetY){
-            state="pause";
-            setTimeout(()=>{
-                if(round===1){
-                    document.getElementById("msg").innerText="move the hook to catch fish";
-                    setTimeout(()=>document.getElementById("msg").innerText="",2000);
-                }
-                state="up";
-            },600);
-        }
+    create(){
+        this.width = this.scale.width;
+        this.height = this.scale.height;
+
+        this.createUI();
+        this.createGauge();
+
+        this.input.on('pointerdown', this.handleTap, this);
+        this.input.on('pointermove', this.handleMove, this);
     }
 
-    if(state==="up"){
-        hook.y-=2;
+    createUI(){
+        this.coinText = this.add.text(this.width/2, 40, "🪙 100", {fontSize:24}).setOrigin(0.5);
+        this.fishText = this.add.text(this.width/2, 40, "🐟 0", {fontSize:24}).setOrigin(0.5).setVisible(false);
 
-        fishes.forEach(f=>{
-            if(!f.caught && Math.abs(f.x-hook.x)<30 && Math.abs(f.y-hook.y)<30){
-                if(fishCount<maxFish){
-                    f.caught=true;
-                    fishCount++;
-                }
+        this.playBtn = this.add.text(this.width/2, this.height-80, "PLAY", {fontSize:32, backgroundColor:"#fff", color:"#000"})
+            .setOrigin(0.5)
+            .setPadding(10)
+            .setInteractive();
+
+        this.playBtn.on('pointerdown', () => this.startGauge());
+
+        this.upgradeFishBtn = this.add.text(this.width/2 - 100, this.height-140, "Fish+", {fontSize:20})
+            .setInteractive();
+
+        this.upgradeDepthBtn = this.add.text(this.width/2 + 100, this.height-140, "Depth+", {fontSize:20})
+            .setInteractive();
+
+        this.upgradeFishBtn.on('pointerdown', () => {
+            if(this.coins >= 50){
+                this.coins -= 50;
+                this.maxFish++;
+                this.updateCoins();
             }
         });
 
-        if(fishCount>=maxFish){
-            hook.y-=5;
+        this.upgradeDepthBtn.on('pointerdown', () => {
+            if(this.coins >= 50){
+                this.coins -= 50;
+                this.maxDepth += 5;
+                this.updateCoins();
+            }
+        });
+    }
+
+    createGauge(){
+        this.gaugePointer = this.add.rectangle(this.width/2, this.height-200, 10, 40, 0xffffff);
+        this.gaugeDir = 1;
+        this.gaugeActive = false;
+    }
+
+    startGauge(){
+        if(this.isFishing) return;
+        this.gaugeActive = true;
+        this.playBtn.setVisible(false);
+    }
+
+    handleTap(){
+        if(this.gaugeActive){
+            this.gaugeActive = false;
+            let t = (this.gaugePointer.x - this.width*0.2) / (this.width*0.6);
+            this.targetDepth = Phaser.Math.Linear(this.maxDepth-2, this.maxDepth, t);
+            this.startFishing();
+        }
+    }
+
+    handleMove(pointer){
+        if(this.isFishing && this.hook){
+            this.hook.x = Phaser.Math.Clamp(pointer.x, 50, this.width-50);
+        }
+    }
+
+    startFishing(){
+        this.isFishing = true;
+        this.fishCaught = 0;
+
+        this.coinText.setVisible(false);
+        this.fishText.setVisible(true);
+
+        this.hook = this.add.rectangle(this.width/2, 0, 10, 20, 0xff0000);
+
+        this.fishGroup = [];
+
+        for(let i=0;i<10;i++){
+            let fish = this.add.circle(
+                Phaser.Math.Between(50, this.width-50),
+                Phaser.Math.Between(200, this.height),
+                10,
+                0x00ffcc
+            );
+            fish.value = Phaser.Math.Between(1,5);
+            this.fishGroup.push(fish);
         }
 
-        if(hook.y<=0){
-            endRound();
+        this.tweens.add({
+            targets:this.hook,
+            y:this.height * 0.7,
+            duration:1000,
+            onComplete:()=> this.startAscend()
+        });
+    }
+
+    startAscend(){
+        this.tweens.add({
+            targets:this.hook,
+            y:0,
+            duration:2000,
+            onUpdate:()=> this.checkCatch(),
+            onComplete:()=> this.endRound()
+        });
+    }
+
+    checkCatch(){
+        this.fishGroup.forEach(fish=>{
+            if(!fish.caught && Phaser.Math.Distance.Between(this.hook.x,this.hook.y,fish.x,fish.y)<20){
+                fish.caught = true;
+                fish.setFillStyle(0xffff00);
+                this.fishCaught++;
+                this.fishText.setText("🐟 " + this.fishCaught);
+
+                if(this.fishCaught >= this.maxFish){
+                    this.hook.y -= 5;
+                }
+            }
+        });
+    }
+
+    endRound(){
+        let total = 0;
+        this.fishGroup.forEach(f=>{
+            if(f.caught) total += f.value;
+            f.destroy();
+        });
+
+        this.coins += total;
+        this.updateCoins();
+
+        this.hook.destroy();
+        this.isFishing = false;
+
+        this.fishText.setVisible(false);
+        this.coinText.setVisible(true);
+
+        if(this.round >= this.maxRounds){
+            this.showEnd();
+        } else {
+            this.round++;
+            this.playBtn.setVisible(true);
         }
+    }
+
+    showEnd(){
+        this.add.text(this.width/2, this.height/2, "Game Over\nCoins: "+this.coins,
+            {fontSize:32, align:"center"}).setOrigin(0.5);
+    }
+
+    update(time){
+        if(this.gaugeActive){
+            this.gaugePointer.x += this.gaugeDir * 5;
+            if(this.gaugePointer.x > this.width*0.8 || this.gaugePointer.x < this.width*0.2){
+                this.gaugeDir *= -1;
+            }
+        }
+    }
+
+    updateCoins(){
+        this.coinText.setText("🪙 " + this.coins);
     }
 }
 
-/////////////////////////
-// END ROUND
-/////////////////////////
-function endRound(){
-    state="result";
-
-    document.getElementById("coins").style.display="block";
-    document.getElementById("fish").style.display="none";
-
-    let gain=fishCount*20;
-    coins+=gain;
-
-    updateUI();
-
-    setTimeout(()=>{
-        round++;
-        if(round>3){
-            document.getElementById("msg").innerText="Game Over!";
-            state="done";
-        }else{
-            resetRound();
-        }
-    },1000);
-}
-
-function resetRound(){
-    state="menu";
-    gaugeActive=true;
-    document.getElementById("upgrades").style.display="block";
-}
-
-/////////////////////////
-// DRAW
-/////////////////////////
-function draw(){
-    ctx.clearRect(0,0,w,h);
-
-    // hook
-    ctx.fillStyle="white";
-    ctx.fillRect(hook.x,hook.y,5,20);
-
-    // fishes
-    ctx.fillStyle="orange";
-    fishes.forEach(f=>{
-        if(!f.caught){
-            ctx.beginPath();
-            ctx.arc(f.x,f.y,10,0,Math.PI*2);
-            ctx.fill();
-        }
-    });
-
-    // gauge
-    if(state==="gauge"){
-        let gx=w/2-100;
-        let gy=h-100;
-
-        ctx.fillStyle="#fff";
-        ctx.fillRect(gx,gy,200,10);
-
-        let px=gx+200*gaugeT;
-        ctx.fillRect(px,gy-5,5,20);
+const config = {
+    type: Phaser.AUTO,
+    width: 360,
+    height: 640,
+    backgroundColor: "#102030",
+    scene: [BootScene, PreloadScene, GameScene],
+    scale: {
+        mode: Phaser.Scale.FIT,
+        autoCenter: Phaser.Scale.CENTER_BOTH
     }
-}
+};
 
-/////////////////////////
-// MAIN LOOP
-/////////////////////////
-function loop(){
-    update();
-    draw();
-    requestAnimationFrame(loop);
-}
-loop();
-
-updateUI();
+new Phaser.Game(config);
 </script>
+
 </body>
 </html>
